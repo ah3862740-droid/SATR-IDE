@@ -1,3 +1,4 @@
+import 'engine/hakem_engine.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,31 +34,15 @@ class _WorkspaceState extends State<Workspace> {
   String result = 'جاهز. اضغط تشغيل لتنفيذ مثال HAKEM.';
   final filename = TextEditingController(text: 'main.hak');
 
+  final hakemEngine = HakemEngine();
+
+
+
   void runHakem() {
-    final vars = <String, String>{}; final out = <String>[];
-    final lines = code.text.split('\n');
-    try {
-      for (var i=0; i<lines.length; i++) {
-        final s=lines[i].trim();
-        if (s.isEmpty || s.startsWith('#')) continue;
-        final p=RegExp(r'^اطبع\((.*)\)$').firstMatch(s);
-        if (p!=null) { out.add(_value(p.group(1)!,vars)); continue; }
-        final v=RegExp(r'^خلي\s+([\w\u0600-\u06FF]+)\s*=\s*(.+)$').firstMatch(s);
-        if (v!=null) { vars[v.group(1)!]=_value(v.group(2)!,vars); continue; }
-        final r=RegExp(r'^كرر\s+(\d+)\s*:').firstMatch(s);
-        if (r!=null) {
-          final body=<String>[];
-          while(i+1<lines.length && RegExp(r'^\s{4,}').hasMatch(lines[i+1])) { body.add(lines[++i].trim()); }
-          for(var n=0;n<int.parse(r.group(1)!).clamp(0,100);n++) {
-            for(final b in body) { final q=RegExp(r'^اطبع\((.*)\)$').firstMatch(b); if(q!=null) out.add(_value(q.group(1)!,vars)); }
-          }
-          continue;
-        }
-        throw FormatException('تعليمة غير مدعومة في السطر ${i+1}: $s');
-      }
-      setState(()=>result=out.join('\n').isEmpty?'تم التنفيذ بدون مخرجات.':out.join('\n'));
-    } catch(e) { setState(()=>result='خطأ: $e'); }
+    final answer = hakemEngine.run(code.text);
+    setState(() => result = answer);
   }
+
   String _value(String s, Map<String,String> vars) {
     s=s.trim(); if(vars.containsKey(s)) return vars[s]!;
     if((s.startsWith('"')&&s.endsWith('"'))||(s.startsWith("'")&&s.endsWith("'"))) return s.substring(1,s.length-1);
@@ -74,16 +59,37 @@ class _WorkspaceState extends State<Workspace> {
         actions:[Padding(padding:const EdgeInsets.only(right:14),child:Center(child:Text('HAKEM 0.3',style:TextStyle(color:green))))]),
       body: Row(children:[
         if(wide) NavigationRail(backgroundColor:bg,selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),
-          destinations:const [NavigationRailDestination(icon:Icon(Icons.code),label:Text('المحرر')),NavigationRailDestination(icon:Icon(Icons.terminal),label:Text('الطرفية')),NavigationRailDestination(icon:Icon(Icons.school),label:Text('التعلّم')),NavigationRailDestination(icon:Icon(Icons.folder),label:Text('المشاريع'))]),
+          destinations:const [
+            NavigationRailDestination(icon:Icon(Icons.code),label:Text('المحرر')),
+            NavigationRailDestination(icon:Icon(Icons.terminal),label:Text('الطرفية')),
+            NavigationRailDestination(icon:Icon(Icons.security),label:Text('Kali Linux')),
+            NavigationRailDestination(icon:Icon(Icons.school),label:Text('الأكاديمية')),
+            NavigationRailDestination(icon:Icon(Icons.folder),label:Text('المشاريع')),
+            NavigationRailDestination(icon:Icon(Icons.settings),label:Text('الإعدادات')),
+          ]),
         Expanded(child: Column(children:[
           if(!wide) _mobileTabs(),
-          Expanded(child: tab==0?_editor():tab==1?_terminal():tab==2?_learn():_projects())
+          Expanded(child:
+            tab==0 ? _editor() :
+            tab==1 ? _terminal() :
+            tab==2 ? _kali() :
+            tab==3 ? _learn() :
+            tab==4 ? _projects() : _settings()
+          )
         ]))
       ]));
   }
-  Widget _mobileTabs()=>SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-    _tabButton('المحرر',0,Icons.code),_tabButton('الطرفية',1,Icons.terminal),_tabButton('التعلّم',2,Icons.school),_tabButton('المشاريع',3,Icons.folder)
-  ]));
+  Widget _mobileTabs()=>SingleChildScrollView(
+    scrollDirection:Axis.horizontal,
+    child:Row(children:[
+      _tabButton('المحرر',0,Icons.code),
+      _tabButton('Terminal',1,Icons.terminal),
+      _tabButton('Kali',2,Icons.security),
+      _tabButton('الأكاديمية',3,Icons.school),
+      _tabButton('المشاريع',4,Icons.folder),
+      _tabButton('الإعدادات',5,Icons.settings),
+    ])
+  );
   Widget _tabButton(String label,int i,IconData icon)=>TextButton.icon(onPressed:()=>setState(()=>tab=i),icon:Icon(icon,color:tab==i?green:muted),label:Text(label,style:TextStyle(color:tab==i?green:muted)));
   Widget _editor()=>Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     const Text('اكتب فكرتك وشغّلها',style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
@@ -112,5 +118,97 @@ class _WorkspaceState extends State<Workspace> {
     const Text('المفسّر المضمّن حاليًا تجريبي ويدعم الطباعة والمتغيرات والتكرار البسيط. الشروط والدوال والقوائم ستُضاف بعد ربط محرك HAKEM المرجعي.',style:TextStyle(color:muted,height:1.6))
   ]);
   Widget _lesson(String title,String sample)=>Card(color:panel,child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(color:green,fontWeight:FontWeight.bold)),const SizedBox(height:8),SelectableText(sample,style:const TextStyle(fontFamily:'monospace'))])));
+
+  Widget _kali()=>ListView(
+    padding:const EdgeInsets.all(16),
+    children:[
+      const Text('SATR Kali Linux',
+        style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
+      const SizedBox(height:8),
+      const Text(
+        'مركز تعلم Linux وأساسيات الأمن السيبراني',
+        style:TextStyle(color:muted)),
+      const SizedBox(height:16),
+      Card(
+        color:panel,
+        child:Padding(
+          padding:const EdgeInsets.all(16),
+          child:Column(
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              const Row(children:[
+                Icon(Icons.security,color:green,size:30),
+                SizedBox(width:10),
+                Text('حالة بيئة Kali',
+                  style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+              ]),
+              const SizedBox(height:12),
+              const Text('غير متصلة حاليًا',
+                style:TextStyle(color:Colors.orange)),
+              const SizedBox(height:8),
+              const Text(
+                'هذه الواجهة تعليمية في الوقت الحالي. لم يتم تثبيت أو ربط بيئة Kali فعلية بعد.',
+                style:TextStyle(color:muted,height:1.6)),
+            ],
+          ),
+        ),
+      ),
+      _lesson('١. مقدمة Linux',
+        'Linux نظام تشغيل مفتوح المصدر ويستخدم في الخوادم وأجهزة الحاسوب.'),
+      _lesson('٢. أساسيات الطرفية',
+        'pwd  - عرض المجلد الحالي\\nls   - عرض الملفات\\nwhoami - عرض اسم المستخدم'),
+      _lesson('٣. أساسيات الشبكات',
+        'تعلم عناوين IP وDNS وHTTP داخل مختبر محلي أو بيئة تملك تصريحًا لاختبارها.'),
+      _lesson('٤. الاستخدام المسؤول',
+        'تدرّب فقط على أجهزتك ومختبراتك أو الأنظمة التي لديك إذن صريح لاختبارها.'),
+    ],
+  );
+
+  Widget _settings()=>ListView(
+    padding:const EdgeInsets.all(16),
+    children:[
+      const Text('إعدادات SATR',
+        style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
+      Card(
+        color:panel,
+        child:const ListTile(
+          leading:Icon(Icons.code,color:green),
+          title:Text('SATR IDE'),
+          subtitle:Text('بيئة تطوير متعددة المنصات'),
+        ),
+      ),
+      Card(
+        color:panel,
+        child:const ListTile(
+          leading:Icon(Icons.language,color:green),
+          title:Text('لغة البرمجة'),
+          subtitle:Text('HAKEM - لغة الحاكم'),
+        ),
+      ),
+      Card(
+        color:panel,
+        child:const ListTile(
+          leading:Icon(Icons.person_outline,color:green),
+          title:Text('المطور'),
+          subtitle:Text('الحاكم'),
+        ),
+      ),
+      Card(
+        color:panel,
+        child:const ListTile(
+          leading:Icon(Icons.telegram,color:green),
+          title:Text('التواصل'),
+          subtitle:Text('@GJP_E'),
+        ),
+      ),
+      const Padding(
+        padding:EdgeInsets.all(12),
+        child:Text(
+          'SATR 0.3 - نسخة تطويرية. بعض الوظائف ما زالت قيد التنفيذ.',
+          style:TextStyle(color:muted)),
+      ),
+    ],
+  );
+
   Widget _projects()=>const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('مساحة المشاريع\\nقريبًا: إنشاء مشروع، فتح مجلد، إدارة الملفات وحفظها محليًا.',textAlign:TextAlign.center,style:TextStyle(fontSize:20,height:1.8))));
 }
